@@ -9,7 +9,7 @@ use rand::prelude::Distribution;
 
 use crate::nom_support::IResult;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Dice {
     rolls: u8,
     sides: u8,
@@ -52,7 +52,7 @@ impl ToString for Dice {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RollResult {
     dice: Dice,
     rolls: Vec<u8>,

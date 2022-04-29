@@ -5,7 +5,7 @@ use crate::nom_support::IResult;
 
 use super::{identifier, DiceExpr};
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum BuiltinFunction {
     Max,
     Min,
@@ -16,16 +16,40 @@ impl BuiltinFunction {
     fn require_args(&self) -> bool {
         true
     }
+
+    fn evaluate(&self, args: &Vec<DiceExpr>) -> Option<i128> {
+        match *self {
+            Self::Max => args
+                .iter()
+                .map(|x| x.evaluate())
+                .max()
+                .expect("function arguments should not be empty"),
+            Self::Min => args
+                .iter()
+                .map(|x| x.evaluate())
+                .min()
+                .expect("function arguments should not be empty"),
+        }
+    }
 }
 
-#[derive(Debug, PartialEq)]
+impl ToString for BuiltinFunction {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Max => "max".to_string(),
+            Self::Min => "min".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Function {
     func: BuiltinFunction,
     args: Vec<DiceExpr>,
 }
 
 impl Function {
-    fn parse(input: &str) -> IResult<Self> {
+    pub fn parse(input: &str) -> IResult<Self> {
         let (input, func) = identifier
             .map_res(|res| match res.as_str() {
                 "max" => Ok(BuiltinFunction::Max),
@@ -63,6 +87,33 @@ impl Function {
         args.insert(0, first.unwrap());
 
         Ok((input, Self { func, args }))
+    }
+
+    pub fn roll(self) -> Self {
+        let Self { func, args } = self;
+
+        Self {
+            func,
+            args: args.into_iter().map(|x| x.roll()).collect(),
+        }
+    }
+
+    pub fn evaluate(&self) -> Option<i128> {
+        self.func.evaluate(&self.args)
+    }
+}
+
+impl ToString for Function {
+    fn to_string(&self) -> String {
+        format!(
+            "{}({})",
+            self.func.to_string(),
+            self.args
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
     }
 }
 

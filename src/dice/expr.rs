@@ -12,7 +12,9 @@ use crate::{
     nom_support::IResult,
 };
 
-#[derive(Debug, PartialEq)]
+use super::function::Function;
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Operator {
     Add,
     Sub,
@@ -51,24 +53,23 @@ impl ToString for Operator {
 enum Term {
     Dice(Dice),
     Constant(i32),
+    Function(Function),
 }
 
 impl Term {
     fn parse(input: &str) -> IResult<Self> {
-        match Dice::parse(&input) {
-            Ok((input, dice)) => Ok((input, Term::Dice(dice))),
-            Err(nom::Err::Error(_)) => {
-                let (input, constant) = complete::i32(input)?;
-                Ok((input, Term::Constant(constant)))
-            }
-            Err(e) => Err(e),
-        }
+        alt((
+            Dice::parse.map(Term::Dice),
+            complete::i32.map(Term::Constant),
+            Function::parse.map(Term::Function),
+        ))(input)
     }
 
     fn to_expr(self) -> DiceExpr {
         match self {
             Self::Dice(dice) => DiceExpr::Dice(dice),
             Self::Constant(constant) => DiceExpr::Constant(constant),
+            Self::Function(function) => DiceExpr::Function(function),
         }
     }
 }
@@ -189,11 +190,12 @@ impl ExprAddSub {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum DiceExpr {
     Constant(i32),
     Dice(Dice),
     Roll(RollResult),
+    Function(Function),
     Expression {
         lhs: Box<DiceExpr>,
         op: Operator,
@@ -213,6 +215,7 @@ impl DiceExpr {
             Self::Constant(x) => Self::Constant(x),
             Self::Dice(dice) => Self::Roll(dice.roll()),
             Self::Roll(_) => panic!("Cannot roll a roll result"),
+            Self::Function(function) => Self::Function(function.roll()),
             Self::Expression { lhs, op, rhs } => match op {
                 Operator::Add => Self::Expression {
                     lhs: Box::new(lhs.roll()),
@@ -238,16 +241,17 @@ impl DiceExpr {
         }
     }
 
-    pub fn result(&self) -> Option<i128> {
+    pub fn evaluate(&self) -> Option<i128> {
         match self {
             Self::Constant(x) => Some(*x as i128),
             Self::Dice(_) => None,
             Self::Roll(roll) => Some(roll.sum() as i128),
+            Self::Function(function) => function.evaluate(),
             Self::Expression { lhs, op, rhs } => match op {
-                Operator::Add => Some(lhs.result()? + rhs.result()?),
-                Operator::Sub => Some(lhs.result()? - rhs.result()?),
-                Operator::Mul => Some(lhs.result()? * rhs.result()?),
-                Operator::Div => Some(lhs.result()? / rhs.result()?),
+                Operator::Add => Some(lhs.evaluate()? + rhs.evaluate()?),
+                Operator::Sub => Some(lhs.evaluate()? - rhs.evaluate()?),
+                Operator::Mul => Some(lhs.evaluate()? * rhs.evaluate()?),
+                Operator::Div => Some(lhs.evaluate()? / rhs.evaluate()?),
             },
         }
     }
@@ -259,6 +263,7 @@ impl ToString for DiceExpr {
             Self::Constant(x) => x.to_string(),
             Self::Dice(dice) => dice.to_string(),
             Self::Roll(roll) => roll.to_string(),
+            Self::Function(function) => function.to_string(),
             Self::Expression { lhs, op, rhs } => {
                 let formula = format!(
                     "({} {} {})",
@@ -267,7 +272,7 @@ impl ToString for DiceExpr {
                     rhs.to_string()
                 );
 
-                if let Some(result) = self.result() {
+                if let Some(result) = self.evaluate() {
                     format!("{} = {}", formula, result)
                 } else {
                     formula
@@ -275,6 +280,16 @@ impl ToString for DiceExpr {
             }
         }
     }
+}
+
+#[test]
+fn test_parse_constant() {
+    assert_eq!(DiceExpr::parse("1").unwrap().1.to_string(), "1");
+    assert_eq!(DiceExpr::parse("-1").unwrap().1.to_string(), "-1");
+    assert_eq!(DiceExpr::parse("-100").unwrap().1.to_string(), "-100");
+    assert_eq!(DiceExpr::parse("100000").unwrap().1.to_string(), "100000");
+    assert!(DiceExpr::parse("10000000000000000").is_err());
+    assert!(DiceExpr::parse("abdfasf").is_err());
 }
 
 #[test]
@@ -328,10 +343,22 @@ fn roll_expr(expr: &str) -> DiceExpr {
 
 #[test]
 fn test_expr_roll() {
-    assert_eq!(roll_expr("6d1 + 3d1").result().unwrap(), 9);
-    assert_eq!(roll_expr("6d1 - 3d1").result().unwrap(), 3);
-    assert_eq!(roll_expr("6d1 * 3d1").result().unwrap(), 18);
-    assert_eq!(roll_expr("6d1 / 3d1").result().unwrap(), 2);
-    assert_eq!(roll_expr("6d1 / 3").result().unwrap(), 2);
-    assert_eq!(roll_expr("6 + 3d1 * 2d1").result().unwrap(), 12);
+    assert_eq!(roll_expr("6d1 + 3d1").evaluate().unwrap(), 9);
+    assert_eq!(roll_expr("6d1 - 3d1").evaluate().unwrap(), 3);
+    assert_eq!(roll_expr("6d1 * 3d1").evaluate().unwrap(), 18);
+    assert_eq!(roll_expr("6d1 / 3d1").evaluate().unwrap(), 2);
+    assert_eq!(roll_expr("6d1 / 3").evaluate().unwrap(), 2);
+    assert_eq!(roll_expr("6 + 3d1 * 2d1").evaluate().unwrap(), 12);
+}
+
+#[test]
+fn test_expr_function() {
+    assert_eq!(roll_expr("max(6d1, 3d1)").evaluate().unwrap(), 6);
+    assert_eq!(roll_expr("min(6d1, 3d1)").evaluate().unwrap(), 3);
+    assert_eq!(
+        roll_expr("min(6d1, max(3d1 + 2d1 * 6d1 / 3d1 - 1, 5d1))")
+            .evaluate()
+            .unwrap(),
+        6
+    );
 }
