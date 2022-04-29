@@ -265,18 +265,12 @@ impl ToString for DiceExpr {
             Self::Roll(roll) => roll.to_string(),
             Self::Function(function) => function.to_string(),
             Self::Expression { lhs, op, rhs } => {
-                let formula = format!(
+                format!(
                     "({} {} {})",
                     lhs.to_string(),
                     op.to_string(),
                     rhs.to_string()
-                );
-
-                if let Some(result) = self.evaluate() {
-                    format!("{} = {}", formula, result)
-                } else {
-                    formula
-                }
+                )
             }
         }
     }
@@ -327,12 +321,12 @@ fn test_parse_dice_expr() {
 
     assert_eq!(
         DiceExpr::parse("1*2+3").unwrap().1.to_string(),
-        "((1 * 2) = 2 + 3) = 5",
+        "((1 * 2) + 3)",
     );
 
     assert_eq!(
         DiceExpr::parse("1*2+3d5").unwrap().1.to_string(),
-        "((1 * 2) = 2 + 3d5)",
+        "((1 * 2) + 3d5)",
     );
 }
 

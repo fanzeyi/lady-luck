@@ -66,16 +66,7 @@ impl RollResult {
 
 impl ToString for RollResult {
     fn to_string(&self) -> String {
-        format!(
-            "{}{{{}}} -> {}",
-            self.dice.to_string(),
-            self.rolls
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<String>>()
-                .join(", "),
-            self.sum(),
-        )
+        self.dice.to_string()
     }
 }
 
