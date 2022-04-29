@@ -1,4 +1,10 @@
-use nom::{character::streaming::one_of, combinator::opt, multi::many0, Parser};
+use nom::{
+    branch::alt,
+    character::{complete, streaming::one_of},
+    combinator::opt,
+    multi::many0,
+    Parser,
+};
 use nom_supreme::ParserExt;
 
 use crate::{
@@ -42,19 +48,45 @@ impl ToString for Operator {
 }
 
 #[derive(Debug, PartialEq)]
+enum Term {
+    Dice(Dice),
+    Constant(i32),
+}
+
+impl Term {
+    fn parse(input: &str) -> IResult<Self> {
+        match Dice::parse(&input) {
+            Ok((input, dice)) => Ok((input, Term::Dice(dice))),
+            Err(nom::Err::Error(_)) => {
+                let (input, constant) = complete::i32(input)?;
+                Ok((input, Term::Constant(constant)))
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    fn to_expr(self) -> DiceExpr {
+        match self {
+            Self::Dice(dice) => DiceExpr::Dice(dice),
+            Self::Constant(constant) => DiceExpr::Constant(constant),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
 struct ExprMulDiv {
-    lhs: Dice,
-    rhs: Vec<(Operator, Dice)>,
+    lhs: Term,
+    rhs: Vec<(Operator, Term)>,
 }
 
 impl ExprMulDiv {
     fn parse(input: &str) -> IResult<Self> {
-        let (input, lhs) = Dice::parse(input)?;
+        let (input, lhs) = Term::parse(input)?;
         let (input, rhs) = opt(many0(|input| {
             let (input, _) = nom::character::complete::space0.complete().parse(input)?;
             let (input, op) = one_of("*/").complete().parse(input)?;
             let (input, _) = nom::character::complete::space0.complete().parse(input)?;
-            let (input, rhs) = Dice::parse(input)?;
+            let (input, rhs) = Term::parse(input)?;
             let op = match op {
                 '*' => Operator::Mul,
                 '/' => Operator::Div,
@@ -76,7 +108,7 @@ impl ExprMulDiv {
         let mut current = None;
 
         for (new_op, lhs) in self.rhs.into_iter().rev() {
-            let lhs = DiceExpr::Dice(lhs);
+            let lhs = lhs.to_expr();
             if let Some((op, rhs)) = current {
                 let node = DiceExpr::Expression {
                     lhs: Box::new(lhs),
@@ -89,7 +121,7 @@ impl ExprMulDiv {
             }
         }
 
-        let lhs = DiceExpr::Dice(self.lhs);
+        let lhs = self.lhs.to_expr();
 
         match current {
             Some((op, rhs)) => DiceExpr::Expression {
@@ -159,6 +191,7 @@ impl ExprAddSub {
 
 #[derive(Debug, PartialEq)]
 pub enum DiceExpr {
+    Constant(i32),
     Dice(Dice),
     Roll(RollResult),
     Expression {
@@ -177,25 +210,26 @@ impl DiceExpr {
 
     pub fn roll(self) -> Self {
         match self {
-            Self::Dice(dice) => DiceExpr::Roll(dice.roll()),
+            Self::Constant(x) => Self::Constant(x),
+            Self::Dice(dice) => Self::Roll(dice.roll()),
             Self::Roll(_) => panic!("Cannot roll a roll result"),
             Self::Expression { lhs, op, rhs } => match op {
-                Operator::Add => DiceExpr::Expression {
+                Operator::Add => Self::Expression {
                     lhs: Box::new(lhs.roll()),
                     op,
                     rhs: Box::new(rhs.roll()),
                 },
-                Operator::Sub => DiceExpr::Expression {
+                Operator::Sub => Self::Expression {
                     lhs: Box::new(lhs.roll()),
                     op,
                     rhs: Box::new(rhs.roll()),
                 },
-                Operator::Mul => DiceExpr::Expression {
+                Operator::Mul => Self::Expression {
                     lhs: Box::new(lhs.roll()),
                     op,
                     rhs: Box::new(rhs.roll()),
                 },
-                Operator::Div => DiceExpr::Expression {
+                Operator::Div => Self::Expression {
                     lhs: Box::new(lhs.roll()),
                     op,
                     rhs: Box::new(rhs.roll()),
@@ -206,6 +240,7 @@ impl DiceExpr {
 
     pub fn result(&self) -> Option<i128> {
         match self {
+            Self::Constant(x) => Some(*x as i128),
             Self::Dice(_) => None,
             Self::Roll(roll) => Some(roll.sum() as i128),
             Self::Expression { lhs, op, rhs } => match op {
@@ -221,9 +256,10 @@ impl DiceExpr {
 impl ToString for DiceExpr {
     fn to_string(&self) -> String {
         match self {
-            DiceExpr::Dice(dice) => dice.to_string(),
-            DiceExpr::Roll(roll) => roll.to_string(),
-            DiceExpr::Expression { lhs, op, rhs } => {
+            Self::Constant(x) => x.to_string(),
+            Self::Dice(dice) => dice.to_string(),
+            Self::Roll(roll) => roll.to_string(),
+            Self::Expression { lhs, op, rhs } => {
                 let formula = format!(
                     "({} {} {})",
                     lhs.to_string(),
@@ -274,5 +310,28 @@ fn test_parse_dice_expr() {
         "((1d6 * 2d6) + 3d6)",
     );
 
-    dbg!(DiceExpr::parse("1d6+2d6*3d6").unwrap().1.roll().to_string());
+    assert_eq!(
+        DiceExpr::parse("1*2+3").unwrap().1.to_string(),
+        "((1 * 2) = 2 + 3) = 5",
+    );
+
+    assert_eq!(
+        DiceExpr::parse("1*2+3d5").unwrap().1.to_string(),
+        "((1 * 2) = 2 + 3d5)",
+    );
+}
+
+#[cfg(test)]
+fn roll_expr(expr: &str) -> DiceExpr {
+    DiceExpr::parse(expr).unwrap().1.roll()
+}
+
+#[test]
+fn test_expr_roll() {
+    assert_eq!(roll_expr("6d1 + 3d1").result().unwrap(), 9);
+    assert_eq!(roll_expr("6d1 - 3d1").result().unwrap(), 3);
+    assert_eq!(roll_expr("6d1 * 3d1").result().unwrap(), 18);
+    assert_eq!(roll_expr("6d1 / 3d1").result().unwrap(), 2);
+    assert_eq!(roll_expr("6d1 / 3").result().unwrap(), 2);
+    assert_eq!(roll_expr("6 + 3d1 * 2d1").result().unwrap(), 12);
 }

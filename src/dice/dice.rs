@@ -1,3 +1,5 @@
+use std::iter;
+
 #[cfg(test)]
 use nom::Finish;
 use nom::{character::complete, Parser};
@@ -27,6 +29,11 @@ impl Dice {
     }
 
     pub fn roll(self) -> RollResult {
+        if self.sides < 1 {
+            let rolls = iter::repeat(0).take(self.rolls as usize).collect();
+            return RollResult { dice: self, rolls };
+        }
+
         let between = Uniform::from(1..=self.sides);
         let mut rolls = Vec::with_capacity(self.rolls as usize);
         let mut rng = rand::thread_rng();
@@ -85,4 +92,13 @@ fn test_parse_dice() {
         Dice::parse("30d300").finish().unwrap_err().to_string(),
         "in section \"parse sides\" at 300,\nexpected an ascii digit at 300"
     );
+}
+
+#[test]
+fn test_dice_roll() {
+    assert_eq!(Dice::new(6, 1).roll().sum(), 6);
+    assert_eq!(Dice::new(6, 0).roll().sum(), 0);
+    assert_eq!(Dice::new(6, 0).roll().rolls, vec![0, 0, 0, 0, 0, 0]);
+    assert_eq!(Dice::new(0, 0).roll().rolls, vec![]);
+    assert_eq!(Dice::new(0, 10).roll().rolls, vec![]);
 }
