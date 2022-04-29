@@ -1,7 +1,7 @@
-use anyhow::Result;
 #[cfg(test)]
 use nom::Finish;
-use nom::{combinator::map_res, error::context};
+use nom::{character::complete, Parser};
+use nom_supreme::ParserExt;
 use rand::distributions::Uniform;
 use rand::prelude::Distribution;
 
@@ -13,23 +13,15 @@ pub struct Dice {
     sides: u8,
 }
 
-fn parse_u8(input: &str) -> Result<u8, std::num::ParseIntError> {
-    u8::from_str_radix(input, 10)
-}
-
-fn parse_u8_str(input: &str) -> IResult<u8> {
-    map_res(nom::character::complete::digit1, parse_u8)(input)
-}
-
 impl Dice {
     pub fn new(rolls: u8, sides: u8) -> Self {
         Dice { rolls, sides }
     }
 
     pub fn parse(input: &str) -> IResult<Dice> {
-        let (input, rolls) = context("parse rolls", parse_u8_str)(input)?;
-        let (input, _) = nom::character::complete::char('d')(input)?;
-        let (input, sides) = context("parse sides", parse_u8_str)(input)?;
+        let (input, rolls) = complete::u8.context("parse rolls").parse(input)?;
+        let (input, _) = complete::char('d')(input)?;
+        let (input, sides) = complete::u8.context("parse sides").parse(input)?;
 
         Ok((input, Dice::new(rolls, sides)))
     }
@@ -87,10 +79,10 @@ fn test_parse_dice() {
     assert_eq!(Dice::parse("255d255").unwrap().1, Dice::new(255, 255));
     assert_eq!(
         Dice::parse("300d30").finish().unwrap_err().to_string(),
-        "in section \"parse rolls\" at 300d30,\nexternal error:\n  number too large to fit in target type at 300d30"
+        "in section \"parse rolls\" at 300d30,\nexpected an ascii digit at 300d30"
     );
     assert_eq!(
         Dice::parse("30d300").finish().unwrap_err().to_string(),
-        "in section \"parse sides\" at 300,\nexternal error:\n  number too large to fit in target type at 300"
+        "in section \"parse sides\" at 300,\nexpected an ascii digit at 300"
     );
 }
