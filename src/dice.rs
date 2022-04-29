@@ -1,16 +1,14 @@
 use anyhow::Result;
-use nom::error::convert_error;
+#[cfg(test)]
 use nom::Finish;
 use nom::{combinator::map_res, error::context};
-use nom_supreme::ParserExt;
 use rand::distributions::Uniform;
 use rand::prelude::Distribution;
 
-// use nom::{Finish, IResult};
-pub type IResult<I, O> = nom::IResult<I, O, nom_supreme::error::ErrorTree<I>>;
+use crate::nom_support::IResult;
 
 #[derive(Debug, PartialEq)]
-struct Dice {
+pub struct Dice {
     rolls: u8,
     sides: u8,
 }
@@ -19,16 +17,16 @@ fn parse_u8(input: &str) -> Result<u8, std::num::ParseIntError> {
     u8::from_str_radix(input, 10)
 }
 
-fn parse_u8_str(input: &str) -> IResult<&str, u8> {
+fn parse_u8_str(input: &str) -> IResult<u8> {
     map_res(nom::character::complete::digit1, parse_u8)(input)
 }
 
 impl Dice {
-    fn new(rolls: u8, sides: u8) -> Self {
+    pub fn new(rolls: u8, sides: u8) -> Self {
         Dice { rolls, sides }
     }
 
-    fn parse(input: &str) -> IResult<&str, Dice> {
+    pub fn parse(input: &str) -> IResult<Dice> {
         let (input, rolls) = context("parse rolls", parse_u8_str)(input)?;
         let (input, _) = nom::character::complete::char('d')(input)?;
         let (input, sides) = context("parse sides", parse_u8_str)(input)?;
@@ -36,7 +34,7 @@ impl Dice {
         Ok((input, Dice::new(rolls, sides)))
     }
 
-    fn roll(self) -> RollResult {
+    pub fn roll(self) -> RollResult {
         let between = Uniform::from(1..=self.sides);
         let mut rolls = Vec::with_capacity(self.rolls as usize);
         let mut rng = rand::thread_rng();
@@ -49,10 +47,37 @@ impl Dice {
     }
 }
 
+impl ToString for Dice {
+    fn to_string(&self) -> String {
+        format!("{}d{}", self.rolls, self.sides)
+    }
+}
+
 #[derive(Debug, PartialEq)]
-struct RollResult {
+pub struct RollResult {
     dice: Dice,
     rolls: Vec<u8>,
+}
+
+impl RollResult {
+    pub fn sum(&self) -> u32 {
+        self.rolls.iter().map(|x| *x as u32).sum()
+    }
+}
+
+impl ToString for RollResult {
+    fn to_string(&self) -> String {
+        format!(
+            "{}{{{}}} -> {}",
+            self.dice.to_string(),
+            self.rolls
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<String>>()
+                .join(", "),
+            self.sum(),
+        )
+    }
 }
 
 #[test]
