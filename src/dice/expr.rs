@@ -58,14 +58,24 @@ enum Term {
     Dice(Dice),
     Constant(i32),
     Function(Function),
+    Parenthesis(Box<ExprAddSub>),
 }
 
 impl Term {
+    fn parse_parenthesis(input: &str) -> IResult<Box<ExprAddSub>> {
+        let (input, _) = complete::char('(')(input)?;
+        let (input, expr) = ExprAddSub::parse(input)?;
+        let (input, _) = complete::char(')')(input)?;
+
+        Ok((input, Box::new(expr)))
+    }
+
     fn parse(input: &str) -> IResult<Self> {
         alt((
             Dice::parse.map(Term::Dice),
             complete::i32.map(Term::Constant),
             Function::parse.map(Term::Function),
+            Self::parse_parenthesis.map(Term::Parenthesis),
         ))(input)
     }
 
@@ -74,6 +84,7 @@ impl Term {
             Self::Dice(dice) => DiceExpr::Dice(dice),
             Self::Constant(constant) => DiceExpr::Constant(constant),
             Self::Function(function) => DiceExpr::Function(function),
+            Self::Parenthesis(expr) => expr.to_expr(),
         }
     }
 }
@@ -312,6 +323,11 @@ fn test_parse_dice_expr() {
     );
 
     assert_eq!(
+        DiceExpr::parse("(1d6+2d6)*3d6").unwrap().1.to_string(),
+        "((1d6 + 2d6) * 3d6)",
+    );
+
+    assert_eq!(
         DiceExpr::parse("1d6+2d6*3d6-4d6/5d6*6d6+7d6")
             .unwrap()
             .1
@@ -351,6 +367,7 @@ fn test_expr_roll() {
     assert_eq!(roll_expr("6d1 / 3d1").evaluate().unwrap(), 2);
     assert_eq!(roll_expr("6d1 / 3").evaluate().unwrap(), 2);
     assert_eq!(roll_expr("6 + 3d1 * 2d1").evaluate().unwrap(), 12);
+    assert_eq!(roll_expr("(6 + 3d1) * 2d1").evaluate().unwrap(), 18);
 }
 
 #[test]
