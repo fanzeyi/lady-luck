@@ -1,12 +1,19 @@
-use bot::DiscordBot;
+use config::Config;
+use dotenv::dotenv;
+
+use crate::bot::DiscordBot;
 
 mod bot;
+mod config;
 mod dice;
 mod nom_support;
 
 fn main() {
-    let bot =
-        DiscordBot::new("OTY5NjcyOTk1MTg4NjY2NDI5.Ymw0WQ.GOu_-F_963B-6vwaD6g43x4tDqo").unwrap();
+    dotenv().ok();
+
+    let config = envy::from_env::<Config>().expect("Failed to load config");
+
+    let bot = DiscordBot::new(config).unwrap();
 
     bot.runloop();
 }

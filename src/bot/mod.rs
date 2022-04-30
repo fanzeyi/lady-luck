@@ -5,13 +5,14 @@ use discord::{
     model::{ChannelId, Event, Message, WebhookId},
     Discord,
 };
-use regex::{Captures, Regex};
+use lazy_regex::regex;
+use regex::Captures;
 use tracing::{error, info, warn};
 
-use crate::dice::{DiceExpr, DiceStatement, EvaluationContext};
-
-const WEBHOOK_NAME: &'static str = "Lady Luck Webhook";
-const BOT_APPLICATION_ID: u64 = 969672995188666429;
+use crate::{
+    config::Config,
+    dice::{DiceStatement, EvaluationContext},
+};
 
 fn superscript(n: usize) -> String {
     let n = n.to_string();
@@ -35,14 +36,16 @@ fn superscript(n: usize) -> String {
 
 pub struct DiscordBot {
     discord: Discord,
+    config: Config,
     webhook_map: HashMap<ChannelId, (WebhookId, String)>,
     eval_context: EvaluationContext,
 }
 
 impl DiscordBot {
-    pub fn new(token: &str) -> Result<Self> {
+    pub fn new(config: Config) -> Result<Self> {
         Ok(DiscordBot {
-            discord: Discord::from_bot_token(token)?,
+            discord: Discord::from_bot_token(&config.bot_token)?,
+            config,
             webhook_map: HashMap::new(),
             eval_context: EvaluationContext::new(),
         })
@@ -59,7 +62,7 @@ impl DiscordBot {
 
         for webhook in webhooks {
             if let Some(app_id) = webhook.application_id {
-                if app_id.0 == BOT_APPLICATION_ID {
+                if app_id.0 == self.config.bot_application_id {
                     match webhook.token {
                         Some(token) => return Some((webhook.id, token)),
                         None => {
@@ -80,7 +83,9 @@ impl DiscordBot {
                 self.webhook_map
                     .insert(channel_id, (webhook_id, token.clone()));
             } else {
-                let webhook = self.discord.create_webhook(channel_id, WEBHOOK_NAME)?;
+                let webhook = self
+                    .discord
+                    .create_webhook(channel_id, &self.config.webhook_name)?;
                 let webhook_id = webhook.id;
                 let webhook_token = webhook
                     .token
@@ -116,7 +121,7 @@ impl DiscordBot {
             return Ok(());
         }
         info!("Message {}: {}", message.author.name, message.content);
-        let matcher = Regex::new(r"\[([^\]]+)\]")?;
+        let matcher = regex!(r"\[([^\]]+)\]");
         let mut explanation = Vec::new();
 
         let processed = matcher.replace_all(&message.content, |captures: &Captures| {

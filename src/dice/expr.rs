@@ -218,7 +218,7 @@ impl DiceExpr {
             Self::Function(function) => Ok(Self::Function(function.roll(context)?)),
             Self::Alias(ident) => match context.get_alias(&ident) {
                 Some(expr) => expr.clone().roll(context),
-                None => Err(anyhow!("alias '{}' is not found", ident)),
+                None => Err(anyhow!("alias '{}' not found", ident)),
             },
             Self::Expression { lhs, op, rhs } => Ok(Self::Expression {
                 lhs: Box::new(lhs.roll(context)?),
