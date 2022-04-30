@@ -3,9 +3,13 @@ use nom::{
     character::{complete, streaming::one_of},
     combinator::opt,
     multi::many0,
-    Parser,
+    Finish, Parser,
 };
-use nom_supreme::ParserExt;
+use nom_supreme::{
+    error::ErrorTree,
+    final_parser::{final_parser, Location},
+    ParserExt,
+};
 
 use crate::{
     dice::{Dice, RollResult},
@@ -204,6 +208,10 @@ pub enum DiceExpr {
 }
 
 impl DiceExpr {
+    pub fn parse_input(input: &str) -> Result<DiceExpr, ErrorTree<Location>> {
+        final_parser(Self::parse)(input)
+    }
+
     pub fn parse(input: &str) -> IResult<DiceExpr> {
         let (input, expr) = ExprAddSub::parse(input)?;
 

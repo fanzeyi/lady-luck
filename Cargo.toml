@@ -10,6 +10,6 @@ anyhow = "1.0.57"
 nom = "7.1.1"
 nom-supreme = "0.8.0"
 rand = "0.8.5"
-# discord = { git = "https://github.com/fanzeyi/discord-rs", features = [] }
-discord = { path = "../discord-rs", features = [] }
+discord = { git = "https://github.com/fanzeyi/discord-rs", features = [] }
 tracing = "0.1.34"
+regex = "1.5.5"

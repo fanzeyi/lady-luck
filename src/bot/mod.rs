@@ -5,10 +5,34 @@ use discord::{
     model::{ChannelId, Event, Message, WebhookId},
     Discord,
 };
-use tracing::{error, info};
+use nom::Finish;
+use regex::{Captures, Regex};
+use tracing::{error, info, warn};
+
+use crate::dice::DiceExpr;
 
 const WEBHOOK_NAME: &'static str = "Lady Luck Webhook";
 const BOT_APPLICATION_ID: u64 = 969672995188666429;
+
+fn superscript(n: usize) -> String {
+    let n = n.to_string();
+
+    n.chars()
+        .map(|c| match c {
+            '0' => '⁰',
+            '1' => '¹',
+            '2' => '²',
+            '3' => '³',
+            '4' => '⁴',
+            '5' => '⁵',
+            '6' => '⁶',
+            '7' => '⁷',
+            '8' => '⁸',
+            '9' => '⁹',
+            _ => unreachable!(),
+        })
+        .collect()
+}
 
 pub struct DiscordBot {
     discord: Discord,
@@ -67,7 +91,7 @@ impl DiscordBot {
         Ok(self.webhook_map[&channel_id].clone())
     }
 
-    fn replace_message(&mut self, message: Message) -> Result<()> {
+    fn replace_message(&mut self, message: Message, new_message: String) -> Result<()> {
         let (webhook_id, token) = self.get_webhook(message.channel_id)?;
 
         self.discord
@@ -75,10 +99,7 @@ impl DiscordBot {
 
         self.discord
             .execute_webhook(webhook_id.clone(), &token, |m| {
-                let m = m
-                    .content(&format!("replaced message! {}", message.content))
-                    .username(&message.author.name);
-
+                let m = m.content(&new_message).username(&message.author.name);
                 if let Some(avatar) = message.author.avatar_url() {
                     m.avatar_url(&avatar)
                 } else {
@@ -89,18 +110,58 @@ impl DiscordBot {
         Ok(())
     }
 
+    fn process_message(&mut self, message: Message) -> Result<()> {
+        if message.author.bot {
+            return Ok(());
+        }
+        info!("Message {}: {}", message.author.name, message.content);
+        let matcher = Regex::new(r"\[([^\]]+)\]")?;
+        let mut explanation = Vec::new();
+
+        let processed = matcher.replace_all(&message.content, |captures: &Captures| {
+            if let Some(group) = captures.get(1) {
+                let n = superscript(explanation.len() + 1);
+
+                let expr = match DiceExpr::parse_input(group.as_str()) {
+                    Ok(expr) => expr,
+                    Err(e) => {
+                        explanation.push(format!("{}Failed to parse: {}", n, e));
+                        return format!("[{}]{}", group.as_str(), n);
+                    }
+                };
+                let rolled = expr.roll();
+
+                if let Some(result) = rolled.evaluate() {
+                    explanation.push(format!("{}{} = {}", n, rolled.to_string(), result));
+                    format!("_{}_{}", result, n)
+                } else {
+                    explanation.push(format!("{}Evaluation didn't finish", n));
+                    format!("[{}]{}", group.as_str(), n)
+                }
+            } else {
+                warn!("Expected to capture two groups, but got 1: {:?}", captures);
+                "[error]".to_owned()
+            }
+        });
+
+        if explanation.len() == 0 {
+            return Ok(());
+        }
+
+        let new_message = format!("{}\n```{}```", processed, explanation.join("\n"));
+        self.replace_message(message, new_message)?;
+
+        Ok(())
+    }
+
     pub fn runloop(mut self) -> () {
         let (mut connection, _) = self.discord.connect().expect("connect failed");
+
         loop {
             match connection.recv_event() {
                 Ok(Event::MessageCreate(message)) => {
-                    info!("Message {}: {}", message.author.name, message.content);
-                    if message.content.starts_with("!") {
-                        let _ = dbg!(self.replace_message(message));
-                    } else if message.content == "!hook" {
-                        self.discord
-                            .create_webhook(message.channel_id, "test")
-                            .expect("webhook");
+                    if let Err(e) = self.process_message(message) {
+                        warn!("Failed to process message: {:?}", e);
                     }
                 }
                 Ok(_) => {}
