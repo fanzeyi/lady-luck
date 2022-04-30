@@ -1,18 +1,20 @@
 use nom::character::complete;
 
-use crate::{dice::Dice, nom_support::IResult};
+#[cfg(test)]
+use crate::dice::Dice;
+use crate::nom_support::IResult;
 
-use super::{identifier, DiceExpr};
+use super::{DiceExpr, Identifier};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Alias {
-    name: String,
-    body: DiceExpr,
+    pub name: Identifier,
+    pub body: DiceExpr,
 }
 
 impl Alias {
-    fn parse(input: &str) -> IResult<Self> {
-        let (input, name) = identifier(input)?;
+    pub fn parse(input: &str) -> IResult<Self> {
+        let (input, name) = Identifier::parse(input)?;
         let (input, _) = complete::space0(input)?;
         let (input, _) = complete::char('=')(input)?;
         let (input, _) = complete::space0(input)?;
@@ -22,12 +24,18 @@ impl Alias {
     }
 }
 
+impl ToString for Alias {
+    fn to_string(&self) -> String {
+        format!("{} = {}", self.name.as_ref(), self.body.to_string())
+    }
+}
+
 #[test]
 fn test_alias() {
     assert_eq!(
         Alias::parse("foo = 1d20").unwrap().1,
         Alias {
-            name: "foo".to_string(),
+            name: Identifier::new("foo".to_string()),
             body: DiceExpr::Dice(Dice::new(1, 20)),
         }
     );

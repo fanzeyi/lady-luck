@@ -5,11 +5,10 @@ use discord::{
     model::{ChannelId, Event, Message, WebhookId},
     Discord,
 };
-use nom::Finish;
 use regex::{Captures, Regex};
 use tracing::{error, info, warn};
 
-use crate::dice::DiceExpr;
+use crate::dice::{DiceExpr, DiceStatement, EvaluationContext};
 
 const WEBHOOK_NAME: &'static str = "Lady Luck Webhook";
 const BOT_APPLICATION_ID: u64 = 969672995188666429;
@@ -37,6 +36,7 @@ fn superscript(n: usize) -> String {
 pub struct DiscordBot {
     discord: Discord,
     webhook_map: HashMap<ChannelId, (WebhookId, String)>,
+    eval_context: EvaluationContext,
 }
 
 impl DiscordBot {
@@ -44,6 +44,7 @@ impl DiscordBot {
         Ok(DiscordBot {
             discord: Discord::from_bot_token(token)?,
             webhook_map: HashMap::new(),
+            eval_context: EvaluationContext::new(),
         })
     }
 
@@ -122,20 +123,27 @@ impl DiscordBot {
             if let Some(group) = captures.get(1) {
                 let n = superscript(explanation.len() + 1);
 
-                let expr = match DiceExpr::parse_input(group.as_str()) {
+                let expr = match DiceStatement::parse_input(group.as_str()) {
                     Ok(expr) => expr,
                     Err(e) => {
                         explanation.push(format!("{}Failed to parse: {}", n, e));
                         return format!("[{}]{}", group.as_str(), n);
                     }
                 };
-                let rolled = expr.roll();
+
+                let rolled = match expr.roll(&mut self.eval_context) {
+                    Ok(rolled) => rolled,
+                    Err(e) => {
+                        explanation.push(format!("{}Failed to roll: {}", n, e));
+                        return format!("[{}]{}", group.as_str(), n);
+                    }
+                };
 
                 if let Some(result) = rolled.evaluate() {
                     explanation.push(format!("{}{} = {}", n, rolled.to_string(), result));
                     format!("_{}_{}", result, n)
                 } else {
-                    explanation.push(format!("{}Evaluation didn't finish", n));
+                    explanation.push(format!("{}{}", n, rolled.to_string()));
                     format!("[{}]{}", group.as_str(), n)
                 }
             } else {

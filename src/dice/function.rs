@@ -1,9 +1,10 @@
+use anyhow::Result;
 use nom::{character::complete, combinator::opt, multi::many0, Parser};
 use nom_supreme::ParserExt;
 
 use crate::nom_support::IResult;
 
-use super::{identifier, DiceExpr};
+use super::{DiceExpr, EvaluationContext, Identifier};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BuiltinFunction {
@@ -50,7 +51,7 @@ pub struct Function {
 
 impl Function {
     pub fn parse(input: &str) -> IResult<Self> {
-        let (input, func) = identifier
+        let (input, func) = Identifier::parse
             .map_res(|res| match res.as_str() {
                 "max" => Ok(BuiltinFunction::Max),
                 "min" => Ok(BuiltinFunction::Min),
@@ -89,13 +90,16 @@ impl Function {
         Ok((input, Self { func, args }))
     }
 
-    pub fn roll(self) -> Self {
+    pub fn roll(self, context: &mut EvaluationContext) -> Result<Self> {
         let Self { func, args } = self;
 
-        Self {
+        Ok(Self {
             func,
-            args: args.into_iter().map(|x| x.roll()).collect(),
-        }
+            args: args
+                .into_iter()
+                .map(|x| x.roll(context))
+                .collect::<Result<Vec<_>>>()?,
+        })
     }
 
     pub fn evaluate(&self) -> Option<i128> {

@@ -1,22 +1,19 @@
+use anyhow::{anyhow, Result};
 use nom::{
     branch::alt,
     character::{complete, streaming::one_of},
     combinator::opt,
     multi::many0,
-    Finish, Parser,
+    Parser,
 };
-use nom_supreme::{
-    error::ErrorTree,
-    final_parser::{final_parser, Location},
-    ParserExt,
-};
+use nom_supreme::ParserExt;
 
 use crate::{
     dice::{Dice, RollResult},
     nom_support::IResult,
 };
 
-use super::function::Function;
+use super::{function::Function, EvaluationContext, Identifier};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Operator {
@@ -24,22 +21,6 @@ pub enum Operator {
     Sub,
     Mul,
     Div,
-}
-
-impl Operator {
-    fn parse(input: &str) -> IResult<Self> {
-        let (input, ops) = one_of("+-*/").context("operator").parse(input)?;
-        Ok((
-            input,
-            match ops {
-                '+' => Self::Add,
-                '-' => Self::Sub,
-                '*' => Self::Mul,
-                '/' => Self::Div,
-                _ => unreachable!(),
-            },
-        ))
-    }
 }
 
 impl ToString for Operator {
@@ -59,6 +40,7 @@ enum Term {
     Constant(i32),
     Function(Function),
     Parenthesis(Box<ExprAddSub>),
+    Alias(Identifier),
 }
 
 impl Term {
@@ -76,6 +58,7 @@ impl Term {
             complete::i32.map(Term::Constant),
             Function::parse.map(Term::Function),
             Self::parse_parenthesis.map(Term::Parenthesis),
+            Identifier::parse.map(Term::Alias),
         ))(input)
     }
 
@@ -85,6 +68,7 @@ impl Term {
             Self::Constant(constant) => DiceExpr::Constant(constant),
             Self::Function(function) => DiceExpr::Function(function),
             Self::Parenthesis(expr) => expr.to_expr(),
+            Self::Alias(ident) => DiceExpr::Alias(ident),
         }
     }
 }
@@ -211,6 +195,7 @@ pub enum DiceExpr {
     Dice(Dice),
     Roll(RollResult),
     Function(Function),
+    Alias(Identifier),
     Expression {
         lhs: Box<DiceExpr>,
         op: Operator,
@@ -219,44 +204,27 @@ pub enum DiceExpr {
 }
 
 impl DiceExpr {
-    pub fn parse_input(input: &str) -> Result<DiceExpr, ErrorTree<Location>> {
-        final_parser(Self::parse)(input)
-    }
-
     pub fn parse(input: &str) -> IResult<DiceExpr> {
         let (input, expr) = ExprAddSub::parse(input)?;
 
         Ok((input, expr.to_expr()))
     }
 
-    pub fn roll(self) -> Self {
+    pub fn roll(self, context: &mut EvaluationContext) -> Result<Self> {
         match self {
-            Self::Constant(x) => Self::Constant(x),
-            Self::Dice(dice) => Self::Roll(dice.roll()),
-            Self::Roll(_) => panic!("Cannot roll a roll result"),
-            Self::Function(function) => Self::Function(function.roll()),
-            Self::Expression { lhs, op, rhs } => match op {
-                Operator::Add => Self::Expression {
-                    lhs: Box::new(lhs.roll()),
-                    op,
-                    rhs: Box::new(rhs.roll()),
-                },
-                Operator::Sub => Self::Expression {
-                    lhs: Box::new(lhs.roll()),
-                    op,
-                    rhs: Box::new(rhs.roll()),
-                },
-                Operator::Mul => Self::Expression {
-                    lhs: Box::new(lhs.roll()),
-                    op,
-                    rhs: Box::new(rhs.roll()),
-                },
-                Operator::Div => Self::Expression {
-                    lhs: Box::new(lhs.roll()),
-                    op,
-                    rhs: Box::new(rhs.roll()),
-                },
+            Self::Constant(x) => Ok(Self::Constant(x)),
+            Self::Dice(dice) => Ok(Self::Roll(dice.roll())),
+            Self::Roll(_) => Err(anyhow!("cannot roll a roll result")),
+            Self::Function(function) => Ok(Self::Function(function.roll(context)?)),
+            Self::Alias(ident) => match context.get_alias(&ident) {
+                Some(expr) => expr.clone().roll(context),
+                None => Err(anyhow!("alias '{}' is not found", ident)),
             },
+            Self::Expression { lhs, op, rhs } => Ok(Self::Expression {
+                lhs: Box::new(lhs.roll(context)?),
+                op,
+                rhs: Box::new(rhs.roll(context)?),
+            }),
         }
     }
 
@@ -266,6 +234,7 @@ impl DiceExpr {
             Self::Dice(_) => None,
             Self::Roll(roll) => Some(roll.sum() as i128),
             Self::Function(function) => function.evaluate(),
+            Self::Alias(_) => None,
             Self::Expression { lhs, op, rhs } => match op {
                 Operator::Add => Some(lhs.evaluate()? + rhs.evaluate()?),
                 Operator::Sub => Some(lhs.evaluate()? - rhs.evaluate()?),
@@ -283,6 +252,7 @@ impl ToString for DiceExpr {
             Self::Dice(dice) => dice.to_string(),
             Self::Roll(roll) => roll.to_string(),
             Self::Function(function) => function.to_string(),
+            Self::Alias(alias) => alias.to_string(),
             Self::Expression { lhs, op, rhs } => {
                 format!(
                     "({} {} {})",
@@ -356,7 +326,11 @@ fn test_parse_dice_expr() {
 
 #[cfg(test)]
 fn roll_expr(expr: &str) -> DiceExpr {
-    DiceExpr::parse(expr).unwrap().1.roll()
+    DiceExpr::parse(expr)
+        .unwrap()
+        .1
+        .roll(&mut EvaluationContext::new())
+        .unwrap()
 }
 
 #[test]
