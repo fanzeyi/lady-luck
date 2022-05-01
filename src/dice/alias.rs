@@ -1,10 +1,11 @@
+use anyhow::Result;
 use nom::character::complete;
 
 #[cfg(test)]
 use crate::dice::Dice;
 use crate::nom_support::IResult;
 
-use super::{DiceExpr, Identifier};
+use super::{DiceExpr, EvaluationContext, Identifier};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Alias {
@@ -23,14 +24,26 @@ impl Alias {
         Ok((input, Self { name, body }))
     }
 
+    pub fn roll(self, context: &mut EvaluationContext) -> Result<Self> {
+        let Alias { name, body } = self;
+        Ok(Alias {
+            name,
+            body: body.roll(context)?,
+        })
+    }
+
     pub fn explain(&self) -> String {
         format!("{} = {}", self.name, self.body.explain())
+    }
+
+    pub fn evaluate(&self) -> Option<i128> {
+        self.body.evaluate()
     }
 }
 
 impl ToString for Alias {
     fn to_string(&self) -> String {
-        format!("{} = {}", self.name.as_ref(), self.body.to_string())
+        format!("{}", self.name.as_ref())
     }
 }
 

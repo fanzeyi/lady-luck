@@ -13,7 +13,7 @@ use crate::{
     nom_support::IResult,
 };
 
-use super::{function::Function, EvaluationContext, Identifier};
+use super::{alias::Alias, function::Function, EvaluationContext, Identifier};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Operator {
@@ -196,6 +196,7 @@ pub enum DiceExpr {
     Roll(RollResult),
     Function(Function),
     Alias(Identifier),
+    AliasResult(Box<Alias>),
     Expression {
         lhs: Box<DiceExpr>,
         op: Operator,
@@ -217,9 +218,10 @@ impl DiceExpr {
             Self::Roll(_) => Err(anyhow!("cannot roll a roll result")),
             Self::Function(function) => Ok(Self::Function(function.roll(context)?)),
             Self::Alias(ident) => match context.get_alias(&ident) {
-                Some(expr) => expr.clone().roll(context),
+                Some(expr) => Ok(Self::AliasResult(Box::new(expr.clone().roll(context)?))),
                 None => Err(anyhow!("alias '{}' not found", ident)),
             },
+            Self::AliasResult(_) => Err(anyhow!("cannot roll an alias result")),
             Self::Expression { lhs, op, rhs } => Ok(Self::Expression {
                 lhs: Box::new(lhs.roll(context)?),
                 op,
@@ -235,6 +237,7 @@ impl DiceExpr {
             Self::Roll(roll) => Some(roll.sum() as i128),
             Self::Function(function) => function.evaluate(),
             Self::Alias(_) => None,
+            Self::AliasResult(alias) => alias.evaluate(),
             Self::Expression { lhs, op, rhs } => match op {
                 Operator::Add => Some(lhs.evaluate()? + rhs.evaluate()?),
                 Operator::Sub => Some(lhs.evaluate()? - rhs.evaluate()?),
@@ -247,10 +250,11 @@ impl DiceExpr {
     pub fn explain(&self) -> String {
         match self {
             Self::Constant(x) => x.to_string(),
-            Self::Dice(dice) => "".to_owned(),
+            Self::Dice(_) => "".to_owned(),
             Self::Roll(roll) => roll.explain(),
             Self::Function(function) => function.explain(),
             Self::Alias(ident) => ident.to_string(),
+            Self::AliasResult(alias) => alias.explain(),
             Self::Expression { lhs, op, rhs } => {
                 format!("{} {} {}", lhs.explain(), op.to_string(), rhs.explain())
             }
@@ -266,6 +270,7 @@ impl ToString for DiceExpr {
             Self::Roll(roll) => roll.to_string(),
             Self::Function(function) => function.to_string(),
             Self::Alias(alias) => alias.to_string(),
+            Self::AliasResult(alias) => alias.to_string(),
             Self::Expression { lhs, op, rhs } => {
                 format!(
                     "({} {} {})",

@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use nom::Parser;
 use nom_supreme::ParserExt;
 
-use super::{alias::Alias, DiceExpr, Identifier};
+use super::{alias::Alias, Identifier};
 
 #[derive(Debug)]
 pub struct EvaluationContext {
-    aliases: HashMap<Identifier, DiceExpr>,
+    aliases: HashMap<Identifier, Alias>,
 }
 
 impl EvaluationContext {
@@ -32,12 +32,11 @@ impl EvaluationContext {
         }
     }
 
-    pub fn get_alias(&self, name: &Identifier) -> Option<&DiceExpr> {
+    pub fn get_alias(&self, name: &Identifier) -> Option<&Alias> {
         self.aliases.get(name)
     }
 
     pub fn add_alias(&mut self, alias: Alias) {
-        let Alias { name, body } = alias;
-        self.aliases.insert(name, body);
+        self.aliases.insert(alias.name.clone(), alias);
     }
 }

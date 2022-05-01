@@ -65,7 +65,7 @@ impl RollResult {
 
     pub fn explain(&self) -> String {
         format!(
-            "{}{{{}}} = {}",
+            "[{}{{{}}} = {}]",
             self.dice.to_string(),
             self.rolls
                 .iter()
