@@ -14,6 +14,10 @@ use crate::{
     dice::{DiceStatement, EvaluationContext},
 };
 
+use self::skill::skill_map;
+
+mod skill;
+
 fn superscript(n: usize) -> String {
     let n = n.to_string();
 
@@ -116,11 +120,7 @@ impl DiscordBot {
         Ok(())
     }
 
-    fn process_message(&mut self, message: Message) -> Result<()> {
-        if message.author.bot {
-            return Ok(());
-        }
-        info!("Message {}: {}", message.author.name, message.content);
+    fn process_roll(&mut self, message: &Message) -> Option<String> {
         let matcher = regex!(r"\[([^\]]+)\]");
         let mut explanation = Vec::new();
 
@@ -158,11 +158,34 @@ impl DiscordBot {
         });
 
         if explanation.len() == 0 {
+            return None;
+        }
+
+        Some(format!("{}\n```{}```", processed, explanation.join("\n")))
+    }
+
+    fn lookup_skill(&self, message: &Message) -> Option<String> {
+        if !message.content.starts_with("!skill ") {
+            return None;
+        }
+
+        let skill_name = message.content.trim_start_matches("!skill ");
+        skill_map().get(skill_name).map(|x| x.to_string())
+    }
+
+    fn process_message(&mut self, message: Message) -> Result<()> {
+        if message.author.bot {
             return Ok(());
         }
 
-        let new_message = format!("{}\n```{}```", processed, explanation.join("\n"));
-        self.replace_message(message, new_message)?;
+        info!("Message {}: {}", message.author.name, message.content);
+
+        if let Some(skill) = self.lookup_skill(&message) {
+            self.discord
+                .send_message_ex(message.channel_id, |msg| msg.content(&skill))?;
+        } else if let Some(result) = self.process_roll(&message) {
+            self.replace_message(message, result)?;
+        }
 
         Ok(())
     }

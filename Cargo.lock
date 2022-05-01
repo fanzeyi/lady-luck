@@ -337,8 +337,10 @@ dependencies = [
  "dotenv",
  "envy",
  "lazy-regex",
+ "maplit",
  "nom",
  "nom-supreme",
+ "once_cell",
  "rand 0.8.5",
  "regex",
  "serde",
@@ -403,6 +405,12 @@ checksum = "6389c490849ff5bc16be905ae24bc913a9c8892e19b2341dbc175e14c341c2b8"
 dependencies = [
  "cfg-if 1.0.0",
 ]
+
+[[package]]
+name = "maplit"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e2e65a1a2e43cfcb47a895c4c8b10d1f4a61097f9f254f183aee60cad9c651d"
 
 [[package]]
 name = "matches"
