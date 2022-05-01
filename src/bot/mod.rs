@@ -121,11 +121,11 @@ impl DiscordBot {
     }
 
     fn process_roll(&mut self, message: &Message) -> Option<String> {
-        let matcher = regex!(r"\[([^\]]+)\]");
+        let matcher = regex!(r"(\[|【)([^\]】]+)(\]|】)");
         let mut explanation = Vec::new();
 
         let processed = matcher.replace_all(&message.content, |captures: &Captures| {
-            if let Some(group) = captures.get(1) {
+            if let Some(group) = captures.get(2) {
                 let n = superscript(explanation.len() + 1);
 
                 let expr = match DiceStatement::parse_input(group.as_str()) {
@@ -145,8 +145,8 @@ impl DiscordBot {
                 };
 
                 if let Some(result) = rolled.evaluate() {
-                    explanation.push(format!("{}{} = {}", n, rolled.to_string(), result));
-                    format!("_{}_{}", result, n)
+                    explanation.push(format!("{}{} = {}", n, rolled.explain(), result));
+                    format!("`{}={}`{}", rolled.to_string(), result, n)
                 } else {
                     explanation.push(format!("{}{}", n, rolled.to_string()));
                     format!("[{}]{}", group.as_str(), n)

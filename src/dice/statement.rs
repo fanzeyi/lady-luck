@@ -42,6 +42,13 @@ impl DiceStatement {
             Self::Expr(expr) => expr.evaluate(),
         }
     }
+
+    pub fn explain(&self) -> String {
+        match self {
+            Self::Alias(alias) => alias.explain(),
+            Self::Expr(expr) => expr.explain(),
+        }
+    }
 }
 
 impl ToString for DiceStatement {

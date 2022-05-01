@@ -105,6 +105,18 @@ impl Function {
     pub fn evaluate(&self) -> Option<i128> {
         self.func.evaluate(&self.args)
     }
+
+    pub fn explain(&self) -> String {
+        format!(
+            "{}({})",
+            self.func.to_string(),
+            self.args
+                .iter()
+                .map(|x| x.explain())
+                .collect::<Vec<String>>()
+                .join(", ")
+        )
+    }
 }
 
 impl ToString for Function {

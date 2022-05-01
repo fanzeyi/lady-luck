@@ -22,6 +22,10 @@ impl Alias {
 
         Ok((input, Self { name, body }))
     }
+
+    pub fn explain(&self) -> String {
+        format!("{} = {}", self.name, self.body.explain())
+    }
 }
 
 impl ToString for Alias {

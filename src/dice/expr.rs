@@ -243,6 +243,19 @@ impl DiceExpr {
             },
         }
     }
+
+    pub fn explain(&self) -> String {
+        match self {
+            Self::Constant(x) => x.to_string(),
+            Self::Dice(dice) => "".to_owned(),
+            Self::Roll(roll) => roll.explain(),
+            Self::Function(function) => function.explain(),
+            Self::Alias(ident) => ident.to_string(),
+            Self::Expression { lhs, op, rhs } => {
+                format!("{} {} {}", lhs.explain(), op.to_string(), rhs.explain())
+            }
+        }
+    }
 }
 
 impl ToString for DiceExpr {

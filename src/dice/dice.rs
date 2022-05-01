@@ -62,6 +62,19 @@ impl RollResult {
     pub fn sum(&self) -> u32 {
         self.rolls.iter().map(|x| *x as u32).sum()
     }
+
+    pub fn explain(&self) -> String {
+        format!(
+            "{}{{{}}} = {}",
+            self.dice.to_string(),
+            self.rolls
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<String>>()
+                .join(", "),
+            self.sum()
+        )
+    }
 }
 
 impl ToString for RollResult {
